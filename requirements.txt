@@ -1,0 +1,18 @@
+# Core data and app dependencies
+numpy
+pandas
+streamlit
+requests
+
+# Modeling
+scikit-learn
+xgboost
+
+# Dataset build notebook dependencies
+xarray
+cdsapi
+osmnx
+rasterio
+
+# Presentation generation
+python-pptx
