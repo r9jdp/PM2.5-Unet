@@ -6,22 +6,35 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+try:
+    import altair as alt
+except Exception:  # pragma: no cover
+    alt = None
 
-st.set_page_config(page_title="PM2.5 XGBoost Dashboard", page_icon="📊", layout="wide")
+
+st.set_page_config(
+    page_title="PM2.5 Final-Term Comparison",
+    page_icon="AQ",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "model_outputs"
-BUNDLE_DIR = BASE_DIR / "pm25_delhi_bundle"
+PRED_PATH = OUTPUT_DIR / "model_predictions_compare.csv"
+METRICS_PATH = OUTPUT_DIR / "model_comparison_metrics.csv"
 
-PRED_PATH = OUTPUT_DIR / "predictions_all.csv"
-FI_PATH = OUTPUT_DIR / "feature_importance.csv"
-MASTER_PATH = OUTPUT_DIR / "delhi_pm25_master.csv"
-OPENAQ_PATH = BUNDLE_DIR / "openaq_pm25.csv"
+MODEL_LABELS = {
+    "pred_xgb_model": "XGBoost",
+    "pred_ann_model": "ANN",
+}
 
 
-@st.cache_data
-def load_csv(path: Path) -> pd.DataFrame:
-    return pd.read_csv(path)
+@st.cache_data(show_spinner=False)
+def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame]:
+    pred_df = pd.read_csv(PRED_PATH)
+    metrics_df = pd.read_csv(METRICS_PATH)
+    return pred_df, metrics_df
 
 
 def metric_block(actual: pd.Series, pred: pd.Series) -> dict[str, float]:
@@ -33,190 +46,284 @@ def metric_block(actual: pd.Series, pred: pd.Series) -> dict[str, float]:
     ss_res = float(((actual - pred) ** 2).sum())
     ss_tot = float(((actual - actual.mean()) ** 2).sum())
     r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
-
-    non_zero = actual != 0
-    mape = float((abs_err[non_zero] / actual[non_zero].abs()).mean() * 100) if non_zero.any() else float("nan")
-    smape = float((2 * abs_err / (actual.abs() + pred.abs()).replace(0, np.nan)).mean() * 100)
     bias = float(err.mean())
 
     return {
         "MAE": mae,
         "RMSE": rmse,
         "R2": r2,
-        "MAPE": mape,
-        "sMAPE": smape,
         "Bias": bias,
     }
 
 
-def build_persistence_baseline(pred_df: pd.DataFrame) -> pd.DataFrame:
-    out = pred_df.copy().sort_values(["station_id", "date"]).reset_index(drop=True)
-    out["pred_persistence"] = out.groupby("station_id")["actual_pm25"].shift(1)
-    return out.dropna(subset=["pred_persistence"]) 
+def build_metrics_table(pred_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    actual = pred_df["actual_pm25"]
+    for col, label in MODEL_LABELS.items():
+        metrics = metric_block(actual, pred_df[col])
+        rows.append(
+            {
+                "Model": label,
+                "MAE": metrics["MAE"],
+                "RMSE": metrics["RMSE"],
+                "R2": metrics["R2"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["MAE", "RMSE"]).reset_index(drop=True)
 
 
-def header() -> None:
-    st.title("PM2.5 Prediction Dashboard")
-    st.caption("XGBoost performance summary and diagnostics for professor presentation")
+def build_station_metrics(pred_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for station_id, station_df in pred_df.groupby("station_id", sort=True):
+        row = {"station_id": station_id, "rows": len(station_df)}
+        for col, label in MODEL_LABELS.items():
+            metrics = metric_block(station_df["actual_pm25"], station_df[col])
+            row[f"{label}_MAE"] = metrics["MAE"]
+            row[f"{label}_RMSE"] = metrics["RMSE"]
+        row["Better Model"] = "ANN" if row["ANN_MAE"] < row["XGBoost_MAE"] else "XGBoost"
+        row["MAE Gap"] = row["XGBoost_MAE"] - row["ANN_MAE"]
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values("MAE Gap", ascending=False).reset_index(drop=True)
 
 
-header()
-
-st.sidebar.header("Data Sources")
-st.sidebar.write(f"Predictions: {PRED_PATH.name}")
-st.sidebar.write(f"Feature Importance: {FI_PATH.name}")
-st.sidebar.write(f"Training Master: {MASTER_PATH.name}")
-st.sidebar.write(f"OpenAQ Target File: {OPENAQ_PATH.name}")
-
-missing = [p for p in [PRED_PATH, FI_PATH, MASTER_PATH] if not p.exists()]
-if missing:
-    st.error("Missing required model output files. Run the training notebook first.")
-    st.stop()
-
-pred_df = load_csv(PRED_PATH)
-fi_df = load_csv(FI_PATH)
-master_df = load_csv(MASTER_PATH)
-
-if pred_df.empty:
-    st.error("predictions_all.csv is empty.")
-    st.stop()
-
-pred_df["date"] = pd.to_datetime(pred_df["date"], errors="coerce")
-pred_df = pred_df.dropna(subset=["date", "actual_pm25", "pred_pm25"]).copy()
-pred_df["actual_pm25"] = pd.to_numeric(pred_df["actual_pm25"], errors="coerce")
-pred_df["pred_pm25"] = pd.to_numeric(pred_df["pred_pm25"], errors="coerce")
-pred_df = pred_df.dropna(subset=["actual_pm25", "pred_pm25"]).copy()
-
-station_options = sorted(pred_df["station_id"].astype(str).unique())
-selected_stations = st.sidebar.multiselect(
-    "Filter station(s)",
-    options=station_options,
-    default=station_options,
-)
-
-if not selected_stations:
-    st.warning("Select at least one station.")
-    st.stop()
-
-view_df = pred_df[pred_df["station_id"].astype(str).isin(selected_stations)].copy()
-if view_df.empty:
-    st.warning("No rows after station filter.")
-    st.stop()
-
-metrics = metric_block(view_df["actual_pm25"], view_df["pred_pm25"])
-
-# Optional baseline from persistence lag-1 on same prediction table.
-baseline_df = build_persistence_baseline(view_df)
-baseline_metrics = None
-if not baseline_df.empty:
-    baseline_metrics = metric_block(baseline_df["actual_pm25"], baseline_df["pred_persistence"])
-
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-col1.metric("Rows", f"{len(view_df):,}")
-col2.metric("Stations", f"{view_df['station_id'].nunique()}")
-col3.metric("MAE", f"{metrics['MAE']:.2f}")
-col4.metric("RMSE", f"{metrics['RMSE']:.2f}")
-col5.metric("R²", f"{metrics['R2']:.3f}")
-col6.metric("sMAPE %", f"{metrics['sMAPE']:.2f}")
-
-st.markdown("### Metrics Matrix")
-rows = [
-    {
-        "Model": "XGBoost Final",
-        "MAE (ug/m3)": metrics["MAE"],
-        "RMSE (ug/m3)": metrics["RMSE"],
-        "R2": metrics["R2"],
-        "MAPE (%)": metrics["MAPE"],
-        "sMAPE (%)": metrics["sMAPE"],
-        "Bias (Pred-Actual)": metrics["Bias"],
+def kpi_card(title: str, value: str, tone: str = "neutral") -> str:
+    tone_map = {
+        "neutral": "#f4efe3",
+        "good": "#d8f0d2",
+        "warn": "#f4d7c8",
     }
-]
-if baseline_metrics is not None:
-    rows.append(
-        {
-            "Model": "Persistence (lag-1)",
-            "MAE (ug/m3)": baseline_metrics["MAE"],
-            "RMSE (ug/m3)": baseline_metrics["RMSE"],
-            "R2": baseline_metrics["R2"],
-            "MAPE (%)": baseline_metrics["MAPE"],
-            "sMAPE (%)": baseline_metrics["sMAPE"],
-            "Bias (Pred-Actual)": baseline_metrics["Bias"],
-        }
+    bg = tone_map.get(tone, tone_map["neutral"])
+    return f"""
+    <div style="
+        background:{bg};
+        border-radius:18px;
+        padding:18px 20px;
+        min-height:108px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    ">
+        <div style="font-size:0.8rem; letter-spacing:0.08em; text-transform:uppercase; opacity:0.72;">{title}</div>
+        <div style="font-size:2rem; font-weight:700; margin-top:10px; color:#182218;">{value}</div>
+    </div>
+    """
+
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(220,232,214,0.9), transparent 35%),
+            linear-gradient(180deg, #f5efe6 0%, #ede4d7 100%);
+    }
+    .block-container {
+        max-width: 1180px;
+        padding-top: 1.6rem;
+        padding-bottom: 2.5rem;
+    }
+    h1, h2, h3 {
+        color: #17221a;
+    }
+    [data-testid="stMetric"] {
+        background: rgba(255,255,255,0.66);
+        border: 1px solid rgba(23,34,26,0.08);
+        border-radius: 16px;
+        padding: 0.8rem 1rem;
+    }
+    div[data-testid="stDataFrame"] {
+        background: rgba(255,255,255,0.72);
+        border-radius: 16px;
+        padding: 0.35rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+if not PRED_PATH.exists() or not METRICS_PATH.exists():
+    st.error("Missing comparison files. Run `python build_model_comparison.py` first.")
+    st.stop()
+
+pred_df, _saved_metrics_df = load_inputs()
+pred_df["date"] = pd.to_datetime(pred_df["date"], errors="coerce")
+pred_df["actual_pm25"] = pd.to_numeric(pred_df["actual_pm25"], errors="coerce")
+for col in MODEL_LABELS:
+    pred_df[col] = pd.to_numeric(pred_df[col], errors="coerce")
+pred_df = pred_df.dropna(subset=["date", "station_id", "actual_pm25", "pred_xgb_model", "pred_ann_model"]).copy()
+
+overall_metrics = build_metrics_table(pred_df)
+station_metrics = build_station_metrics(pred_df)
+
+winner = overall_metrics.iloc[0]
+runner_up = overall_metrics.iloc[1]
+mae_margin = runner_up["MAE"] - winner["MAE"]
+ann_row = overall_metrics[overall_metrics["Model"] == "ANN"].iloc[0]
+xgb_row = overall_metrics[overall_metrics["Model"] == "XGBoost"].iloc[0]
+
+st.title("PM2.5 Final-Term Model Comparison")
+st.caption("Faculty presentation view: only the two final models, the same split, and the most useful visuals.")
+
+top_left, top_mid, top_right = st.columns([1.35, 1.1, 1.1])
+with top_left:
+    st.markdown(
+        """
+        ### Final takeaway
+        The dashboard compares only **XGBoost** and **ANN** on the same chronological holdout.
+        No auxiliary baselines, no debug rows, and no overplotted multi-station charts.
+        """
+    )
+with top_mid:
+    st.markdown(
+        kpi_card("Best Model", winner["Model"], "good" if winner["Model"] == "ANN" else "warn"),
+        unsafe_allow_html=True,
+    )
+with top_right:
+    st.markdown(
+        kpi_card("MAE Margin", f"{mae_margin:.2f} ug/m3", "good"),
+        unsafe_allow_html=True,
     )
 
-metrics_df = pd.DataFrame(rows)
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.markdown(kpi_card("ANN MAE", f"{ann_row['MAE']:.2f}", "good"), unsafe_allow_html=True)
+with k2:
+    st.markdown(kpi_card("XGBoost MAE", f"{xgb_row['MAE']:.2f}", "neutral"), unsafe_allow_html=True)
+with k3:
+    st.markdown(kpi_card("ANN R2", f"{ann_row['R2']:.3f}", "good"), unsafe_allow_html=True)
+with k4:
+    st.markdown(kpi_card("Stations", f"{pred_df['station_id'].nunique()}"), unsafe_allow_html=True)
+
+st.markdown("### Overall Metrics")
+display_metrics = overall_metrics.copy()
 st.dataframe(
-    metrics_df.style.format(
-        {
-            "MAE (ug/m3)": "{:.2f}",
-            "RMSE (ug/m3)": "{:.2f}",
-            "R2": "{:.3f}",
-            "MAPE (%)": "{:.2f}",
-            "sMAPE (%)": "{:.2f}",
-            "Bias (Pred-Actual)": "{:.2f}",
-        }
-    ),
+    display_metrics.round({"MAE": 2, "RMSE": 2, "R2": 3}),
     use_container_width=True,
+    hide_index=True,
 )
 
-chart_df = view_df.sort_values("date").copy()
-chart_df["abs_error"] = (chart_df["actual_pm25"] - chart_df["pred_pm25"]).abs()
-chart_df["residual"] = chart_df["pred_pm25"] - chart_df["actual_pm25"]
+control_a, control_b = st.columns([1, 1.2])
+station_options = sorted(pred_df["station_id"].astype(str).unique())
+selected_station = control_a.selectbox("Station", station_options, index=0)
+focus_metric = control_b.radio("Station Ranking Metric", ["MAE Gap", "ANN_MAE", "XGBoost_MAE"], horizontal=True)
 
-st.markdown("### Actual vs Predicted Over Time")
-line_plot_df = chart_df[["date", "actual_pm25", "pred_pm25"]].set_index("date")
-st.line_chart(line_plot_df, use_container_width=True)
+station_view_df = pred_df[pred_df["station_id"].astype(str) == selected_station].sort_values("date").copy()
+date_min = station_view_df["date"].min().date()
+date_max = station_view_df["date"].max().date()
+default_start = max(date_min, (station_view_df["date"].max() - pd.Timedelta(days=27)).date())
+date_window = st.slider(
+    "Date window",
+    min_value=date_min,
+    max_value=date_max,
+    value=(default_start, date_max),
+)
+chart_source = station_view_df[
+    (station_view_df["date"].dt.date >= date_window[0]) & (station_view_df["date"].dt.date <= date_window[1])
+].copy()
+chart_title = f"{selected_station}: daily PM2.5 comparison"
 
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("### Parity Check")
-    parity = chart_df[["actual_pm25", "pred_pm25"]].copy()
-    st.scatter_chart(parity, x="actual_pm25", y="pred_pm25", use_container_width=True)
-with c2:
-    st.markdown("### Residual vs Actual")
-    res_plot = chart_df[["actual_pm25", "residual"]].copy()
-    st.scatter_chart(res_plot, x="actual_pm25", y="residual", use_container_width=True)
+if chart_source.empty:
+    st.warning("No rows found for the selected date window.")
+    st.stop()
 
-st.markdown("### Worst Error Days")
-worst = chart_df.sort_values("abs_error", ascending=False).head(25)
-st.dataframe(
-    worst[["station_id", "date", "actual_pm25", "pred_pm25", "abs_error", "residual"]],
-    use_container_width=True,
+line_df = chart_source.rename(
+    columns={
+        "actual_pm25": "Actual",
+        "pred_xgb_model": "XGBoost",
+        "pred_ann_model": "ANN",
+    }
 )
 
-st.markdown("### Feature Importance")
-if not fi_df.empty and {"feature", "importance"}.issubset(fi_df.columns):
-    fi_top = fi_df.sort_values("importance", ascending=False).head(20).set_index("feature")
-    st.bar_chart(fi_top["importance"], use_container_width=True)
+st.markdown("### Time-Series Comparison")
+if alt is not None:
+    long_df = line_df.melt("date", var_name="series", value_name="pm25")
+    color_scale = alt.Scale(domain=["Actual", "ANN", "XGBoost"], range=["#204a87", "#0b8f55", "#a8512b"])
+    chart = (
+        alt.Chart(long_df)
+        .mark_line(strokeWidth=2.6)
+        .encode(
+            x=alt.X("date:T", title="Date"),
+            y=alt.Y("pm25:Q", title="PM2.5 (ug/m3)"),
+            color=alt.Color("series:N", title="", scale=color_scale),
+            tooltip=[
+                alt.Tooltip("date:T", title="Date"),
+                alt.Tooltip("series:N", title="Series"),
+                alt.Tooltip("pm25:Q", title="PM2.5", format=".2f"),
+            ],
+        )
+        .properties(height=360, title=chart_title)
+    )
+    st.altair_chart(chart, use_container_width=True)
 else:
-    st.info("feature_importance.csv not available or missing columns.")
+    st.line_chart(line_df.set_index("date")[["Actual", "ANN", "XGBoost"]], use_container_width=True)
 
-st.markdown("### Download Tables")
-out_pred = chart_df.to_csv(index=False).encode("utf-8")
-out_metrics = metrics_df.to_csv(index=False).encode("utf-8")
-
-b1, b2 = st.columns(2)
-with b1:
-    st.download_button(
-        label="Download Filtered Predictions CSV",
-        data=out_pred,
-        file_name="dashboard_predictions_filtered.csv",
-        mime="text/csv",
-    )
-with b2:
-    st.download_button(
-        label="Download Metrics Matrix CSV",
-        data=out_metrics,
-        file_name="dashboard_metrics_matrix.csv",
-        mime="text/csv",
+left, right = st.columns([1.1, 0.9])
+with left:
+    st.markdown("### Station-Wise Performance")
+    station_table = station_metrics.sort_values(focus_metric, ascending=(focus_metric != "MAE Gap")).copy()
+    st.dataframe(
+        station_table.round(
+            {
+                "ANN_MAE": 2,
+                "XGBoost_MAE": 2,
+                "ANN_RMSE": 2,
+                "XGBoost_RMSE": 2,
+                "MAE Gap": 2,
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
 
-with st.expander("Method Notes For Presentation"):
-    st.write(
-        "This dashboard summarizes the current XGBoost run using your saved model outputs. "
-        "Metrics are displayed in concentration units (ug/m3). For percent-style interpretation, refer to MAPE/sMAPE."
+with right:
+    st.markdown("### Faculty Summary")
+    better_count = int((station_metrics["Better Model"] == "ANN").sum())
+    worse_count = int((station_metrics["Better Model"] == "XGBoost").sum())
+    st.markdown(
+        f"""
+        - **ANN overall MAE:** `{ann_row['MAE']:.2f}`
+        - **XGBoost overall MAE:** `{xgb_row['MAE']:.2f}`
+        - **ANN better stations:** `{better_count}`
+        - **XGBoost better stations:** `{worse_count}`
+
+        **Interpretation**
+
+        The comparison is now presentation-focused:
+        only two models, one clean station selector, and one fair metric table.
+        """
     )
-    st.write(
-        "When station coverage is limited, results represent temporal predictive performance for available stations, "
-        "not city-wide spatial generalization."
-    )
+
+diag_left, diag_right = st.columns(2)
+with diag_left:
+    st.markdown("### Parity: XGBoost")
+    parity_xgb = chart_source[["actual_pm25", "pred_xgb_model"]].rename(columns={"pred_xgb_model": "pred_pm25"})
+    if alt is not None:
+        parity_chart = (
+            alt.Chart(parity_xgb)
+            .mark_circle(size=72, opacity=0.75, color="#a8512b")
+            .encode(
+                x=alt.X("actual_pm25:Q", title="Actual PM2.5"),
+                y=alt.Y("pred_pm25:Q", title="Predicted PM2.5"),
+                tooltip=[alt.Tooltip("actual_pm25:Q", format=".2f"), alt.Tooltip("pred_pm25:Q", format=".2f")],
+            )
+            .properties(height=280)
+        )
+        st.altair_chart(parity_chart, use_container_width=True)
+    else:
+        st.scatter_chart(parity_xgb, x="actual_pm25", y="pred_pm25", use_container_width=True)
+
+with diag_right:
+    st.markdown("### Parity: ANN")
+    parity_ann = chart_source[["actual_pm25", "pred_ann_model"]].rename(columns={"pred_ann_model": "pred_pm25"})
+    if alt is not None:
+        parity_chart = (
+            alt.Chart(parity_ann)
+            .mark_circle(size=72, opacity=0.75, color="#0b8f55")
+            .encode(
+                x=alt.X("actual_pm25:Q", title="Actual PM2.5"),
+                y=alt.Y("pred_pm25:Q", title="Predicted PM2.5"),
+                tooltip=[alt.Tooltip("actual_pm25:Q", format=".2f"), alt.Tooltip("pred_pm25:Q", format=".2f")],
+            )
+            .properties(height=280)
+        )
+        st.altair_chart(parity_chart, use_container_width=True)
+    else:
+        st.scatter_chart(parity_ann, x="actual_pm25", y="pred_pm25", use_container_width=True)
