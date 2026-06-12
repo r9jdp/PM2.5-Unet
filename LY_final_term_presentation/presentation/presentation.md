@@ -1,11 +1,11 @@
-# Final-Term Evaluation Presentation Content
+﻿# Final-Term Evaluation Presentation Content
 
 Use this file as the main content guide for the final-term PPT.  
 The goal of this deck is to clearly show:
 
-1. what was completed by midterm,
-2. what was added in the final term,
-3. how the dataset was collected and prepared,
+1. the complete project objective,
+2. how the dataset was collected and prepared,
+3. how the final semester implementation was carried out,
 4. how XGBoost and ANN were implemented fairly,
 5. and why ANN is slightly better in the final comparison.
 
@@ -19,8 +19,9 @@ Each slide includes:
 
 ---
 
-## Slide 1 - Title Slide
-**Title:**  
+## Slide 1 - Title rajdeepp
+
+**Title:** 
 PM$_{2.5}$ Estimation over Delhi-NCR: Final-Term Evaluation
 
 **Write on slide:**
@@ -28,8 +29,8 @@ PM$_{2.5}$ Estimation over Delhi-NCR: Final-Term Evaluation
 - Group 38
 - Rajdeep Pandey - 16014223064
 - Vruddhi Mule - 16014223099
-- Sagar Jadav - 16014223070
-- Sohom Malik - 16014223083
+- Sagar Jadhav - 16014223070
+- Sohom Mallick - 16014223083
 - Third Year, AIDS
 - KJ Somaiya College of Engineering
 - Faculty Guide: Dr. Suchitra Patil
@@ -61,50 +62,46 @@ The main challenge is that PM$_{2.5}$ is not stable over time. It changes strong
 
 ---
 
-## Slide 3 - Semester Objective
+## Slide 3 - Project Objective
 **Title:**  
-Project Objective and Final-Term Goal
+Project Objective
 
 **Write on slide:**
-- Build an end-to-end PM$_{2.5}$ estimation workflow for Delhi-NCR.
-- Collect data from authentic external APIs and geospatial sources.
-- Create a clean station-date master dataset.
-- Engineer temporal, seasonal, and historical PM$_{2.5}$ features.
-- Train and evaluate multiple machine learning models.
-- Compare XGBoost and ANN under the same evaluation protocol.
-- Present the results through a faculty-oriented dashboard and technical report.
+- Build an end-to-end PM$_{2.5}$ estimation framework for Delhi-NCR.
+- Collect PM$_{2.5}$, meteorological, elevation, and urban-context data from authentic external sources.
+- Prepare a unified station-date dataset for supervised environmental learning.
+- Engineer temporal, seasonal, historical, and contextual features.
+- Implement XGBoost as a strong machine learning baseline.
+- Implement ANN for nonlinear predictive comparison on the same feature space.
+- Extend the project direction toward deeper spatial modeling through U-Net based PM$_{2.5}$ estimation.
+- Present the complete workflow through a technical report and a faculty-facing dashboard.
 
 **What to say:**
-At the beginning of the project, the focus was on building the data pipeline and baseline model. In the final term, the focus shifted to model comparison and final evaluation. Therefore, the final objective was not only to build a model, but to compare two models fairly and present the results clearly.
+The project objective is broader than one model result. It includes collected-data integration, feature engineering, implementation of XGBoost and ANN, fair comparative evaluation, and the longer-term direction toward U-Net based deep spatial modeling.
 
 **Image to add:**
 - Optional: no image required
 
 ---
 
-## Slide 4 - Midterm to Final-Term Progression
+## Slide 4 - Final Semester Implementation
 **Title:**  
-What Was Done by Midterm and What Was Added Later
+Final Semester Implementation
 
-**Write on slide as two blocks:**
-
-**Midterm completed:**
-- data collection pipeline
-- dataset packaging
-- preprocessing
-- feature engineering
-- XGBoost baseline
-- initial dashboard
-
-**Final-term additions:**
+**Write on slide:**
+- collected multi-source dataset prepared and organized into a station-date master table
+- preprocessing and harmonization completed for PM$_{2.5}$ and meteorological variables
+- temporal, lag-based, rolling, and seasonal features engineered
+- XGBoost baseline trained and evaluated
 - ANN implementation
 - ANN tuning and stabilization
-- fair model comparison on same split
-- faculty-focused dashboard cleanup
-- detailed final report and final metrics interpretation
+- ANN ensemble prediction for more stable final inference
+- fair XGBoost vs ANN comparison on the same split
+- dashboard refined for faculty presentation
+- detailed final report and final presentation materials prepared
 
 **What to say:**
-The midterm established the baseline workflow. The final term extended that work by implementing ANN, comparing it with XGBoost on the same test split, refining the presentation dashboard, and producing complete documentation for evaluation.
+This slide summarizes what is implemented in the final semester version of the project. The system now includes the complete collected-data workflow, two implemented supervised models, a fair evaluation protocol, and a cleaned presentation layer for final review.
 
 **Image to add:**
 - Optional: no image required
@@ -298,7 +295,7 @@ XGBoost Baseline Implementation
 - subsampling and regularization enabled
 
 **What to say:**
-XGBoost was the main baseline model from midterm onward because it performs well on structured tabular data. It captures nonlinear relationships effectively and provides interpretable feature-importance output.
+XGBoost is used as the main baseline model because it performs strongly on structured tabular data. It captures nonlinear relationships effectively and provides interpretable feature-importance output.
 
 **Image to add:**
 - `slide12_feature_importance_top10.png`
@@ -307,7 +304,7 @@ XGBoost was the main baseline model from midterm onward because it performs well
 
 ## Slide 13 - ANN Model
 **Title:**  
-ANN Final-Term Implementation
+ANN Implementation
 
 **Write on slide:**
 - Model family: Multilayer Perceptron Regressor
@@ -323,7 +320,7 @@ ANN Final-Term Implementation
 - Therefore, the final comparison is fair
 
 **What to say:**
-The ANN was not added casually. It was tuned and stabilized for final-term evaluation. The final version uses a stronger architecture and multiple seeds so that the ANN result is not dependent on one unstable run.
+The ANN was tuned and stabilized for final evaluation. The final version uses a stronger architecture and multiple seeds so that the ANN result is not dependent on one unstable run.
 
 **Image to add:**
 - Optional: no dedicated image needed, or use a simple architecture schematic you create manually in PPT
@@ -375,7 +372,7 @@ Final Test Results
 - ANN gives the better final result under the same protocol
 
 **What to say:**
-The most important final-term result is that ANN performs slightly better than XGBoost across the main error metrics. The difference is not dramatic, but it is consistent enough to conclude that ANN is the better model in this experiment.
+The most important result is that ANN performs slightly better than XGBoost across the main error metrics. The difference is not dramatic, but it is consistent enough to conclude that ANN is the better model in this experiment.
 
 **Image to add:**
 - `model_metrics_comparison.png`
@@ -406,7 +403,7 @@ This result suggests that the current feature space already explains a large par
 Faculty-Facing Dashboard
 
 **Write on slide:**
-- Dashboard refined specifically for final-term evaluation
+- Dashboard refined specifically for faculty evaluation
 - Shows only ANN vs XGBoost
 - Clean metrics matrix
 - Selected-station time-series comparison
@@ -427,15 +424,16 @@ The dashboard was redesigned from a debug-style analysis interface into a facult
 Conclusion
 
 **Write on slide:**
-- Complete semester workflow successfully implemented
+- Complete project workflow successfully implemented
 - Multi-source environmental dataset collected and integrated
 - XGBoost baseline built and evaluated
-- ANN implemented and tuned for final-term comparison
+- ANN implemented and tuned for final comparison
+- U-Net remains part of the broader project objective and future deep-model direction
 - ANN slightly outperforms XGBoost on the final test set
 - Work demonstrates a full pipeline from collection to analysis to presentation
 
 **Closing line to speak:**
-The final outcome of the semester is not just a model, but a complete PM$_{2.5}$ estimation pipeline with reproducible data preparation, fair model evaluation, and presentation-ready outputs. Under the final evaluation protocol, ANN achieved the best result.
+The final outcome is not just a trained model, but a complete PM$_{2.5}$ estimation pipeline with reproducible data preparation, fair model evaluation, and presentation-ready outputs. Among the implemented models, ANN achieved the best result.
 
 **Image to add:**
 - Optional: no image required, or use `slide14_artifacts_snapshot.png` again in smaller form
@@ -455,8 +453,8 @@ Detailed Dataset Schema
 - cyclical time features
 
 **Use when asked:**
-- “Explain the attributes in the dataset”
-- “What exactly was used as input to the models?”
+- "Explain the attributes in the dataset"
+- "What exactly was used as input to the models?"
 
 **Image to add:**
 - Optional: no image required
@@ -476,8 +474,8 @@ Why ANN and XGBoost Are Close
 - ANN gives improvement, but the feature representation still constrains both models
 
 **Use when asked:**
-- “Why is the gain not large?”
-- “If ANN is better, why is it only slightly better?”
+- "Why is the gain not large?"
+- "If ANN is better, why is it only slightly better?"
 
 **Image to add:**
 - Optional: no image required
@@ -513,3 +511,4 @@ Use the following files from `presentation/images/`:
 - Backup slides: if faculty asks for details
 
 This order keeps the presentation balanced between dataset understanding, implementation depth, and final comparative result.
+
